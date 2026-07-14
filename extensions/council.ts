@@ -504,8 +504,23 @@ async function runCouncil(
 // /council init — generate a config from local providers in models.json
 // ---------------------------------------------------------------------------
 
-function generateConfigTemplate(): { config: CouncilConfig; note: string } {
+async function isEndpointAlive(baseUrl: string): Promise<boolean> {
+	try {
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), 1500);
+		// /v1/models (or <baseUrl>/models) is served by llama.cpp, Ollama, MLX, vLLM alike.
+		const url = `${baseUrl.replace(/\/$/, "")}/models`;
+		const res = await fetch(url, { signal: controller.signal });
+		clearTimeout(timer);
+		return res.status < 500;
+	} catch {
+		return false;
+	}
+}
+
+async function generateConfigTemplate(): Promise<{ config: CouncilConfig; note: string }> {
 	const candidates: CouncilMember[] = [];
+	let deadProviders = 0;
 	try {
 		const modelsPath = path.join(getAgentDir(), "models.json");
 		const models = JSON.parse(fs.readFileSync(modelsPath, "utf-8"));
@@ -513,6 +528,11 @@ function generateConfigTemplate(): { config: CouncilConfig; note: string } {
 			const baseUrl: string = provider.baseUrl ?? "";
 			const isLocal = baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1");
 			if (!isLocal) continue;
+			// Only seat models whose server is actually running right now.
+			if (!(await isEndpointAlive(baseUrl))) {
+				deadProviders++;
+				continue;
+			}
 			for (const model of provider.models ?? []) {
 				candidates.push({ name: model.id.split(":")[0].split("/").pop(), model: `${providerName}/${model.id}` });
 			}
@@ -525,7 +545,7 @@ function generateConfigTemplate(): { config: CouncilConfig; note: string } {
 	const distinct: CouncilMember[] = [];
 	const seenFamilies = new Set<string>();
 	for (const c of candidates) {
-		const family = c.name.replace(/[\d.:].*$/, "");
+		const family = c.name.toLowerCase().replace(/[\d.:\-_].*$/, "");
 		if (seenFamilies.has(family)) continue;
 		seenFamilies.add(family);
 		distinct.push(c);
@@ -540,10 +560,11 @@ function generateConfigTemplate(): { config: CouncilConfig; note: string } {
 					{ name: "member-3", model: "<provider>/<model-id>" },
 				];
 	const chairman = candidates[0] ?? { name: "chairman", model: "<provider>/<strongest-local-model>" };
+	const deadNote = deadProviders > 0 ? ` (skipped ${deadProviders} local provider(s) whose server is not running)` : "";
 	const note =
 		distinct.length >= 2
-			? `Detected ${candidates.length} local models; picked ${members.length} distinct families. Edit to taste.`
-			: `No local providers detected in models.json — fill in the placeholders.`;
+			? `Detected ${candidates.length} live local models${deadNote}; picked ${members.length} distinct families. Edit to taste.`
+			: `No RUNNING local providers detected${deadNote} — start your model server(s) and re-run, or fill in the placeholders.`;
 	return {
 		config: { members, chairman, concurrency: 2, memberTools: [], timeoutMs: 900_000, saveTranscripts: true },
 		note,
@@ -626,7 +647,8 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify(`Config already exists: ${target} — edit it directly.`, "warning");
 					return;
 				}
-				const { config, note } = generateConfigTemplate();
+				ctx.ui.notify("Probing local model servers…", "info");
+				const { config, note } = await generateConfigTemplate();
 				fs.writeFileSync(target, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
 				ctx.ui.notify(`Wrote ${target}. ${note}`, "info");
 				return;
