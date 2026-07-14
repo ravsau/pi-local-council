@@ -35,14 +35,28 @@ transcript receipt in `.pi/council/`.
 pi install git:github.com/ravsau/pi-local-council
 ```
 
+**Prerequisite: your model servers must be running.** The council talks to whatever
+endpoints your pi `models.json` points at — it doesn't start them for you:
+
+- **Ollama** — just have the daemon up (`ollama serve` or the menu-bar app). It loads and
+  unloads models on demand, so an Ollama-only council needs no other preparation.
+- **llama.cpp / MLX / vLLM servers** — start each one yourself before convening
+  (e.g. `llama-server -m model.gguf --port 8090`). A member whose server is down fails with
+  a connection error; the council continues if at least 2 members answer.
+
+The same applies to the **main agent's model**: if pi's default model points at a server
+that isn't running, pi errors before the council is ever involved. Run
+`pi --model ollama/<model>` or start the server.
+
 Then generate a config from the local providers pi already knows about:
 
 ```
 /council init
 ```
 
-This writes `~/.pi/agent/council.json`, auto-picking up to three **distinct model families**
-from your `models.json`. Edit to taste:
+This probes your local providers and writes `~/.pi/agent/council.json`, seating up to three
+**distinct model families** — only from servers that are **actually running** (dead endpoints
+are skipped and reported). Edit to taste:
 
 ```json
 {
