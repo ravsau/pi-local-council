@@ -1,0 +1,23 @@
+{
+  "name": "pi-local-council",
+  "version": "0.1.0",
+  "description": "Karpathy-style LLM Council for the pi coding agent, built for local models — independent answers, anonymized peer review, chairman verdict. $0 per question.",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "llm-council",
+    "local-llm",
+    "ollama",
+    "llama.cpp",
+    "multi-agent"
+  ],
+  "author": "Saurav Sharma (CloudYeti)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ravsau/pi-local-council.git"
+  },
+  "pi": {
+    "extensions": ["./extensions"]
+  }
+}
